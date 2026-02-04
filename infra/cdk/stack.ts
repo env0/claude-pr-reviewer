@@ -9,6 +9,10 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export type ClaudePrReviewerStackProps = cdk.StackProps & {
   vpcId?: string;
@@ -49,11 +53,6 @@ export class ClaudePrReviewerStack extends cdk.Stack {
       description: 'GitHub App credentials',
     });
 
-    const anthropicSecret = new secretsmanager.Secret(this, 'AnthropicSecret', {
-      secretName: 'claude-pr-reviewer/anthropic',
-      description: 'Anthropic API key',
-    });
-
     const ecrRepository = new ecr.Repository(this, 'ReviewerRepository', {
       repositoryName: 'claude-pr-reviewer',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
@@ -75,7 +74,22 @@ export class ClaudePrReviewerStack extends cdk.Stack {
     });
 
     githubAppSecret.grantRead(taskRole);
-    anthropicSecret.grantRead(taskRole);
+
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockAccess',
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          'bedrock:ListInferenceProfiles',
+        ],
+        resources: [
+          'arn:aws:bedrock:*:*:inference-profile/*',
+          'arn:aws:bedrock:*:*:application-inference-profile/*',
+          'arn:aws:bedrock:*:*:foundation-model/*',
+        ],
+      })
+    );
 
     const executionRole = new iam.Role(this, 'ExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
@@ -88,7 +102,6 @@ export class ClaudePrReviewerStack extends cdk.Stack {
 
     ecrRepository.grantPull(executionRole);
     githubAppSecret.grantRead(executionRole);
-    anthropicSecret.grantRead(executionRole);
 
     const logGroup = new logs.LogGroup(this, 'TaskLogGroup', {
       logGroupName: '/ecs/claude-pr-reviewer',
@@ -112,11 +125,16 @@ export class ClaudePrReviewerStack extends cdk.Stack {
       }),
       environment: {
         NODE_ENV: 'production',
+        CLAUDE_CODE_USE_BEDROCK: '1',
+        AWS_REGION: 'us-east-1',
+        ANTHROPIC_MODEL: 'us.anthropic.claude-opus-4-20250514-v1:0',
+        ANTHROPIC_SMALL_FAST_MODEL: 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: '16000',
+        CLAUDE_CODE_MAX_THINKING_TOKENS: '10000',
       },
       secrets: {
         GITHUB_APP_ID: ecs.Secret.fromSecretsManager(githubAppSecret, 'appId'),
         GITHUB_APP_PRIVATE_KEY: ecs.Secret.fromSecretsManager(githubAppSecret, 'privateKey'),
-        ANTHROPIC_API_KEY: ecs.Secret.fromSecretsManager(anthropicSecret, 'apiKey'),
       },
     });
 
@@ -193,11 +211,6 @@ export class ClaudePrReviewerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'GitHubAppSecretArn', {
       value: githubAppSecret.secretArn,
       description: 'ARN of GitHub App secret - populate with appId and privateKey',
-    });
-
-    new cdk.CfnOutput(this, 'AnthropicSecretArn', {
-      value: anthropicSecret.secretArn,
-      description: 'ARN of Anthropic secret - populate with apiKey',
     });
   }
 }
