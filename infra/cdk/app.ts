@@ -7,8 +7,8 @@ const app = new cdk.App();
 
 new ClaudePrReviewerStack(app, 'ClaudePrReviewerStack', {
   env: {
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1',
+    account: process.env.CDK_DEFAULT_ACCOUNT || '170412844252',
+    region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
   },
   description: 'Claude PR Reviewer - GitHub App for automated PR reviews',
 });

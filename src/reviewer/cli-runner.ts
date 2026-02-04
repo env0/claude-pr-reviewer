@@ -33,15 +33,12 @@ export async function runClaudeReview(options: CliRunnerOptions): Promise<CliRun
       [
         '--print',
         '--dangerously-skip-permissions',
-        '--model',
-        'claude-sonnet-4-20250514',
         prompt,
       ],
       {
         cwd: repoPath,
         env: {
           ...process.env,
-          ANTHROPIC_MODEL: 'claude-sonnet-4-20250514',
         },
         stdio: ['pipe', 'pipe', 'pipe'],
       }
