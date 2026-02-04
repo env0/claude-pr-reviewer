@@ -1,0 +1,16 @@
+node_modules
+src
+infra
+*.md
+*.log
+.git
+.gitignore
+.prettierrc
+eslint.config.js
+vitest.config.ts
+tsconfig.json
+cdk.json
+cdk.out
+.env*
+coverage
+.vitest
