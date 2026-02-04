@@ -28,13 +28,16 @@ export type DispatcherConfig = {
   containerName: string;
 };
 
-type PullRequestPayload = {
+type IssueCommentPayload = {
   action: string;
-  number: number;
-  pull_request: {
+  comment: {
+    body: string;
+  };
+  issue: {
     number: number;
-    state: string;
-    draft: boolean;
+    pull_request?: {
+      url: string;
+    };
   };
   repository: {
     full_name: string;
@@ -43,10 +46,6 @@ type PullRequestPayload = {
   };
   installation?: {
     id: number;
-  };
-  requested_reviewer?: {
-    login: string;
-    type: string;
   };
 };
 
@@ -65,14 +64,14 @@ export async function handler(event: WebhookEvent): Promise<DispatcherResponse> 
     }
 
     const githubEvent = event.headers['x-github-event'];
-    if (githubEvent !== 'pull_request') {
-      return { statusCode: 200, body: 'Ignoring non-PR event' };
+    if (githubEvent !== 'issue_comment') {
+      return { statusCode: 200, body: 'Ignoring non-comment event' };
     }
 
-    const payload = JSON.parse(event.body) as PullRequestPayload;
+    const payload = JSON.parse(event.body) as IssueCommentPayload;
 
     if (!shouldTriggerReview(payload)) {
-      return { statusCode: 200, body: 'No review needed for this action' };
+      return { statusCode: 200, body: 'No review needed for this comment' };
     }
 
     const installationId = payload.installation?.id;
@@ -83,7 +82,7 @@ export async function handler(event: WebhookEvent): Promise<DispatcherResponse> 
     await spawnReviewTask(config, {
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
-      prNumber: payload.number,
+      prNumber: payload.issue.number,
       installationId,
     });
 
@@ -95,33 +94,17 @@ export async function handler(event: WebhookEvent): Promise<DispatcherResponse> 
   }
 }
 
-function shouldTriggerReview(payload: PullRequestPayload): boolean {
-  const validActions = ['review_requested', 'ready_for_review'];
-
-  if (!validActions.includes(payload.action)) {
+function shouldTriggerReview(payload: IssueCommentPayload): boolean {
+  if (payload.action !== 'created') {
     return false;
   }
 
-  if (payload.pull_request.state !== 'open') {
+  if (!payload.issue.pull_request) {
     return false;
   }
 
-  if (payload.pull_request.draft) {
-    return false;
-  }
-
-  if (payload.action === 'review_requested') {
-    const reviewer = payload.requested_reviewer;
-    if (reviewer?.type === 'Bot') {
-      return true;
-    }
-  }
-
-  if (payload.action === 'ready_for_review') {
-    return true;
-  }
-
-  return false;
+  const comment = payload.comment.body.trim();
+  return comment === '/claude-review' || comment.startsWith('/claude-review ');
 }
 
 function verifySignature(payload: string, signature: string, secret: string): boolean {
